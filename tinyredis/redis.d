@@ -168,7 +168,8 @@ public :
 
         /*
              Insert the subscriber for the channel, and replace it if it exists already
-
+             Only use one channel at a time
+             
              XXX TODO: Implement multichannel signature ... also, multiple channels with a single cb
         */
         void subscribe(string channel, CallbackFunc cb) {
