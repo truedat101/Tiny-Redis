@@ -8,18 +8,72 @@ private:
     import std.array : appender;
     import std.socket : TcpSocket, InternetAddress;
     import std.traits;
-    
+    import core.thread;
+    import core.atomic;
+
 public :
     import tinyredis.connection;
     import tinyredis.encoder;
     import tinyredis.response;
     import tinyredis.parser : RedisResponseException;
     
+    static alias void function(Object context, Response resp) CallbackFunc;
+
+    class subscriberContext {
+        public int totalremaining;
+        public string channel;
+    }
+
     class Redis
     {
         private:
             TcpSocket conn;
-        
+            CallbackFunc[string] subscribers; // Key by channel
+            Thread subworker;
+            shared(bool) isSubworkerDone; 
+            void f1() { // XXX Maybe extend Thread instead
+                auto keys = subscribers.keys();
+                auto channels = "";
+
+                //
+                // Only subscribe once!!!
+                //
+                for (int i = 0; i < keys.length; i++) {
+                    // XXX Is there an easier way to get this from a list?
+                    channels = channels ~ keys[i] ~ " ";
+                }
+
+                // XXX We should double check that we have enough sub channels to make a command (at least one)
+                auto cmd = "SUBSCRIBE " ~ channels;
+                debug{ writeln(escape(toMultiBulk(cmd)));}
+                conn.send(toMultiBulk(cmd));
+
+                while(!isSubworkerDone) {
+                    writeln("TICK*******************");
+                    writeln("f1 handling subscriber: ", channels);
+
+                    Response[] r = receiveResponses(conn, 1);
+
+                    for (int j = 0; j < r.length; j++) {
+                        writeln(r[j]);
+                        writeln("Processing ", (r.length-j), " more responses");
+                        subscriberContext context = new subscriberContext();
+                        context.totalremaining = cast(int) r.length-j-1;
+                        context.channel = r[j].values[1].value;
+                        subscribers[context.channel](context, r[j]);
+                    }
+                    Thread.sleep(200.msecs);
+                }
+
+                //
+                // Unsubscribe you jerk
+                //
+                cmd = "UNSUBSCRIBE " ~ channels;
+                conn.send(toMultiBulk(cmd));
+                // XXX Do we really need to check the response?
+                writeln("subworker is done, returning");
+                return;
+            };
         public:
         
         /**
@@ -71,7 +125,93 @@ public :
         	Response[] r = receiveResponses(conn, 1);
             return cast(R)(r[0]);
         }
+
+
+        /*
+            channels are separated by space
+            XXX This blocks forever, run from another thread, or put a timeout and unsubscribe at timeout
+        */
+        void subBlock(string channels, CallbackFunc cb) {
+            auto cmd = "SUBSCRIBE " ~ channels; // XXX TODO validate input
+            conn.send(toMultiBulk(cmd));
+            Response[] r = receiveResponses(conn, 1);
+            while (true) { // XXX Need a way to break out
+                for (int i = 0; i < r.length; i++) {
+                    writeln("GOT SUB RESP: ", r[i]);
+                    // XXX Not convinced this is a good idea
+                    subscriberContext context = new subscriberContext();
+                    context.totalremaining = cast(int) r.length-1;
+                    context.channel = r[i].values[1].value; 
+                    cb(context, r[i]);
+                }
+
+                Thread.sleep(200.msecs);
+                r = receiveResponses(conn, 1);
+            }
+        }
+
+        /*
+             Insert the subscriber for the channel, and replace it if it exists already
+        */
+        void subscribe(string channel, CallbackFunc cb) {
+            subscribers[channel] = cb;
+        }
+
+        void unsubscribe(string channel) {
+            subscribers.remove(channel);
+        }
         
+        int getSubscriberCount() {
+            return cast(int) subscribers.length;
+        }
+
+       bool areSubscriptionsStarted() {
+            synchronized {
+            if (isSubworkerDone) {
+                return false;
+            } else {
+                return true;
+            }
+            }
+        }
+
+        int startSubscriptions() {
+            int status = -1;
+
+            if (subworker !is null && subworker.isRunning()) {
+                return status;
+            } else {
+                try {
+                    subworker = new Thread(&f1);
+                    subworker.start();
+                    status = 0;
+                    return status;
+                } catch(ThreadException te) {
+                    return status;
+                }
+            }
+        }
+
+        int stopSubscriptions() {
+            int status = -1;
+            isSubworkerDone = true;
+
+            //
+            // XXX Need a better way to be sure the subscription thread is done and not stuck
+            //
+            if (subworker is null) {
+                writeln("subworker is null");
+                return status;
+            } else {
+                subworker = null;
+                // we should remove all subscribers and null it out only when we are sure
+            }
+
+            status = 0;
+
+            return status;
+        }
+
         /**
          * Send a string that is already encoded in the Redis protocol
          */
@@ -171,6 +311,7 @@ public :
 unittest
 {
     auto redis = new Redis();
+    auto redis2 = new Redis();
     auto response = redis.send("LASTSAVE");
     assert(response.type == ResponseType.Integer);
     
@@ -276,4 +417,71 @@ unittest
     // A BLPOP times out to a Nil multibulk
     response = redis.send("BLPOP nonExistentList 1");
     assert(response.isNil());
+
+    // Verify subscriber apis
+    // static alias void function(Object context, Response resp) CallbackFunc;
+    CallbackFunc cb1 = function(context, resp) {
+        writeln("cb1 invoked with resp:", resp.toDiagnosticString(), " context.totalremaining=", (cast(subscriberContext) context).totalremaining, " context.channel=", (cast(subscriberContext) context).channel);
+    };
+
+    //
+    // Test the blocking call for sub ... TODO, add this to a thread
+    //
+    /*
+    redis.subBlock("foochan foochan2", cb1);
+    */
+    
+
+    redis.subscribe("foochan", cb1);
+    assert(redis.getSubscriberCount() == 1);
+    assert(redis.startSubscriptions() == 0);
+    assert(redis.startSubscriptions() == -1);
+    
+    for (int i = 0; i < 100000; i++) {
+        float x = 10*10.0*10;
+    }
+
+    if (redis.areSubscriptionsStarted()) {
+        //
+        // Note we must do this on a different redis connection or else we clog the toilet
+        // #2 style
+        //
+        redis2.send("PUBLISH foochan again1");
+        redis2.send("PUBLISH foochan againagain2");
+        redis2.send("PUBLISH foochan againagainagain3");
+        redis2.send("PUBLISH foochan again4");
+        redis2.send("PUBLISH foochan againagain5");
+        redis2.send("PUBLISH foochan againagainagain6");
+        redis2.send("PUBLISH foochan again7");
+        redis2.send("PUBLISH foochan againagain8");
+        redis2.send("PUBLISH foochan againagainagain9");
+        redis2.send("PUBLISH foochan again10");
+        redis2.send("PUBLISH foochan againagain11");
+        redis2.send("PUBLISH foochan againagainagain12");
+        redis2.send("PUBLISH foochan again13");
+        redis2.send("PUBLISH foochan againagain14");
+        redis2.send("PUBLISH foochan againagainagain15");
+        redis2.send("PUBLISH foochan again16");
+        redis2.send("PUBLISH foochan againagain17");
+        redis2.send("PUBLISH foochan againagainagain18");
+        redis2.send("PUBLISH foochan again19");
+        redis2.send("PUBLISH foochan againagain20");
+        redis2.send("PUBLISH foochan againagainagain21");
+        redis2.send("PUBLISH foochan again22");
+        redis2.send("PUBLISH foochan againagain23");
+        redis2.send("PUBLISH foochan againagainagain24");
+        redis2.send("PUBLISH foochan again25");
+        redis2.send("PUBLISH foochan againagain26");
+        redis2.send("PUBLISH foochan againagainagain27");
+    }
+    Thread.sleep(5.seconds);
+
+
+
+    assert(redis.stopSubscriptions() == 0);
+    assert(redis.stopSubscriptions() == -1);
+    writeln("DONE WITH TESTS");
+    //
+    // XXX NOTE, thread is stuck waiting here, fix this ... subscriber should release thread
+    //
 }
