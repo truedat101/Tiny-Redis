@@ -17,7 +17,7 @@ public :
     import tinyredis.response;
     import tinyredis.parser : RedisResponseException;
     
-    static alias void function(Object context, Response resp) CallbackFunc;
+    
 
     class subscriberContext {
         public int totalremaining;
@@ -79,6 +79,8 @@ public :
             };
         public:
         
+        static alias void function(Object context, Response resp) CallbackFunc;
+
         /**
          * Create a new connection to the Redis server
          */
@@ -169,7 +171,7 @@ public :
         /*
              Insert the subscriber for the channel, and replace it if it exists already
              Only use one channel at a time
-             
+
              XXX TODO: Implement multichannel signature ... also, multiple channels with a single cb
         */
         void subscribe(string channel, CallbackFunc cb) {
@@ -441,11 +443,11 @@ unittest
 
     // Verify subscriber apis
     // static alias void function(Object context, Response resp) CallbackFunc;
-    CallbackFunc cb1 = function(context, resp) {
+    Redis.CallbackFunc cb1 = function(context, resp) {
         writeln("cb1 invoked with resp:", resp.toDiagnosticString(), " context.totalremaining=", (cast(subscriberContext) context).totalremaining, " context.channel=", (cast(subscriberContext) context).channel);
     };
 
-    CallbackFunc cb2 = function(context, resp) {
+    Redis.CallbackFunc cb2 = function(context, resp) {
         writeln("cb2 invoked with resp:", resp.toDiagnosticString(), " context.totalremaining=", (cast(subscriberContext) context).totalremaining, " context.channel=", (cast(subscriberContext) context).channel);
     };
 
