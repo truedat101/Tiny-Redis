@@ -110,6 +110,7 @@ public :
                 conn = null;
             }
         }
+
         /**
          * Call Redis using any type T that can be converted to a string
          *
@@ -244,6 +245,26 @@ public :
         }
 
         int stopSubscriptions() {
+            int status = -1;
+            isSubworkerDone = true;
+
+            //
+            // XXX Need a better way to be sure the subscription thread is done and not stuck
+            // 
+            if (subworker is null) {
+                writeln("subworker is null");
+                return status;
+            } else {
+                subworker = null;
+                // we should remove all subscribers and null it out only when we are sure
+            }
+
+            status = 0;
+
+            return status;
+        }
+
+        shared int stopSubscriptions() {
             int status = -1;
             isSubworkerDone = true;
 
