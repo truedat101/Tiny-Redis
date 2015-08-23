@@ -26,7 +26,11 @@ public :
         public string channel;
     }
 
+    //
+    // XXX Is there any difference in writing it different ways?
+    //
     alias void function(Object context, Response resp) RedisSubCBFunc;
+    // alias RedisSubCBFunc2 = void function(Object context, Response resp);
 
     class Redis
     {
