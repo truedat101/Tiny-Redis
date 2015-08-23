@@ -3,7 +3,9 @@ module tinyredis.redis;
 /**
  * Authors: Adil Baig, adil.baig@aidezigns.com
  */
-
+/**
+ * Portions by truedat101 (github) 2015
+ */
 private:
     import std.array : appender;
     import std.socket : TcpSocket, InternetAddress, SocketShutdown;
@@ -24,11 +26,13 @@ public :
         public string channel;
     }
 
+    alias void function(Object context, Response resp) RedisSubCBFunc;
+
     class Redis
     {
         private:
             TcpSocket conn;
-            CallbackFunc[string] subscribers; // Key by channel
+            RedisSubCBFunc[string] subscribers; // Key by channel
             Thread subworker;
             shared(bool) isSubworkerDone;
             bool isConnValid;
@@ -79,8 +83,7 @@ public :
             };
         public:
         
-        static alias void function(Object context, Response resp) CallbackFunc;
-
+        
         /**
          * Create a new connection to the Redis server
          */
@@ -149,7 +152,7 @@ public :
             channels are separated by space
             XXX This blocks forever, run from another thread, or put a timeout and unsubscribe at timeout
         */
-        void subBlock(string channels, CallbackFunc cb) {
+        void subBlock(string channels, RedisSubCBFunc cb) {
             auto cmd = "SUBSCRIBE " ~ channels; // XXX TODO validate input
             conn.send(toMultiBulk(cmd));
             Response[] r = receiveResponses(conn, 1);
@@ -174,7 +177,7 @@ public :
 
              XXX TODO: Implement multichannel signature ... also, multiple channels with a single cb
         */
-        void subscribe(string channel, CallbackFunc cb) {
+        void subscribe(string channel, RedisSubCBFunc cb) {
             subscribers[channel] = cb;
         }
 
@@ -442,12 +445,12 @@ unittest
     assert(response.isNil());
 
     // Verify subscriber apis
-    // static alias void function(Object context, Response resp) CallbackFunc;
-    Redis.CallbackFunc cb1 = function(context, resp) {
+    // static alias void function(Object context, Response resp) RedisSubCBFunc;
+    RedisSubCBFunc cb1 = function(context, resp) {
         writeln("cb1 invoked with resp:", resp.toDiagnosticString(), " context.totalremaining=", (cast(subscriberContext) context).totalremaining, " context.channel=", (cast(subscriberContext) context).channel);
     };
 
-    Redis.CallbackFunc cb2 = function(context, resp) {
+    RedisSubCBFunc cb2 = function(context, resp) {
         writeln("cb2 invoked with resp:", resp.toDiagnosticString(), " context.totalremaining=", (cast(subscriberContext) context).totalremaining, " context.channel=", (cast(subscriberContext) context).channel);
     };
 
