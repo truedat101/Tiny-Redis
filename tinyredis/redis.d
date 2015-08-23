@@ -30,6 +30,7 @@ public :
     // XXX Is there any difference in writing it different ways?
     //
     alias void function(Object context, Response resp) RedisSubCBFunc;
+    alias void delegate(Object context, Response resp) RedisSubCBDelegate;
     // alias RedisSubCBFunc2 = void function(Object context, Response resp);
 
     class Redis
@@ -175,6 +176,28 @@ public :
             }
         }
 
+        /*
+            channels are separated by space
+            XXX This blocks forever, run from another thread, or put a timeout and unsubscribe at timeout
+        */
+        void subBlock(string channels, RedisSubCBDelegate cb) {
+            auto cmd = "SUBSCRIBE " ~ channels; // XXX TODO validate input
+            conn.send(toMultiBulk(cmd));
+            Response[] r = receiveResponses(conn, 1);
+            while (true) { // XXX Need a way to break out
+                for (int i = 0; i < r.length; i++) {
+                    writeln("GOT SUB RESP: ", r[i]);
+                    // XXX Not convinced this is a good idea
+                    subscriberContext context = new subscriberContext();
+                    context.totalremaining = cast(int) r.length-1;
+                    context.channel = r[i].values[1].value; 
+                    cb(context, r[i]);
+                }
+
+                Thread.sleep(200.msecs);
+                r = receiveResponses(conn, 1);
+            }
+        }
         /*
              Insert the subscriber for the channel, and replace it if it exists already
              Only use one channel at a time
