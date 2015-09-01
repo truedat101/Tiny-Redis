@@ -10,6 +10,7 @@ private:
     import std.array : appender;
     import std.socket : TcpSocket, InternetAddress, SocketShutdown;
     import std.traits;
+    import std.datetime;
     import core.thread;
     import core.atomic;
 
@@ -37,7 +38,8 @@ public :
     {
         private:
             TcpSocket conn;
-            RedisSubCBFunc[string] subscribers; // Key by channel
+            RedisSubCBFunc[string] subscribers; // Key by channel for use with Callbacks and the non-blocking subscriber()
+            string [string] channelKeys; // For use with the subNoBlock method, pass in the channel name(s) and a date
             Thread subworker;
             shared(bool) isSubworkerDone;
             bool isConnValid;
@@ -179,6 +181,61 @@ public :
 
         /*
             channels are separated by space
+            XXX This doesn't block, and just returns whatever Responses it gets
+            Subsequent calls to it should made using the same set of channels
+            once bound to a set of subscribers
+
+            XXX Refactor candidate ... should we get back a SubscriberHandle that we call into?
+        */
+        Response[] subNoBlock(string channels, bool isPattern) {
+            return subNoBlock(channels, isPattern, Clock.currTime());
+        }
+
+        Response[] subNoBlock(string channels, bool isPattern, SysTime expiryTime) {
+            string cmd;
+
+            if (channels !in channelKeys) {
+                if (isPattern) {
+                    cmd = "PSUBSCRIBE " ~ channels; // XXX TODO validate input
+                } else {
+                    cmd = "SUBSCRIBE " ~ channels; // XXX TODO validate input
+                }
+                conn.send(toMultiBulk(cmd));
+                channelKeys[channels] = expiryTime.toISOExtString(); // XXX TODO implement time expiry
+            }
+
+            Response[] r = receiveResponses(conn, 1);
+            writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length);
+            return r;
+        }
+
+        /*
+            channels are separated by space
+            Unsubscribe from all the channels
+        */
+        Response[] unsubNoBlock(string channels, bool isPattern) {
+            string cmd;
+
+            if (channels in channelKeys) {
+                if (isPattern) {
+                    cmd = "PUNSUBSCRIBE " ~ channels; // XXX TODO validate input
+                } else {
+                    cmd = "UNSUBSCRIBE " ~ channels; // XXX TODO validate input
+                }
+                conn.send(toMultiBulk(cmd));
+                Response[] r = receiveResponses(conn, 1);
+                writeln("unsubNoBlock responses [" ~ channels ~ "] length is ", r.length);
+                channelKeys.remove(channels);
+                return r;
+            } else {
+                writeln("unsubNoBlock no channels subscribed, return null");
+            }
+
+            return null;
+        }
+
+        /*
+            channels are separated by space
             XXX This blocks forever, run from another thread, or put a timeout and unsubscribe at timeout
         */
         void subBlock(string channels, RedisSubCBDelegate cb) {
@@ -219,11 +276,11 @@ public :
 
        bool areSubscriptionsStarted() {
             synchronized {
-            if (isSubworkerDone) {
-                return false;
-            } else {
-                return true;
-            }
+                if (isSubworkerDone) {
+                    return false;
+                } else {
+                    return true;
+                }
             }
         }
 
@@ -509,6 +566,14 @@ unittest
     redis.subBlock("foochan foochan2", cb1);
     */
     
+    responses = redis.subNoBlock("foozzle", false);
+    writeln(responses.length);
+    assert(responses.length == 1);
+    redis2.send("PUBLISH foozzle again1");
+    responses = redis.subNoBlock("foozzle", false);
+    assert(responses.length == 1);
+    responses = redis.unsubNoBlock("foozzle", false);
+    assert(responses.length == 1);
 
     redis.subscribe("foochan", cb1);
     redis.subscribe("baaasim", cb2);
