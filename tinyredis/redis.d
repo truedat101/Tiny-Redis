@@ -188,10 +188,14 @@ public :
             XXX Refactor candidate ... should we get back a SubscriberHandle that we call into?
         */
         Response[] subNoBlock(string channels, bool isPattern) {
-            return subNoBlock(channels, isPattern, Clock.currTime());
+            return subNoBlock(channels, isPattern, 1000 /* msecs */, Clock.currTime());
         }
 
-        Response[] subNoBlock(string channels, bool isPattern, SysTime expiryTime) {
+        Response[] subNoBlock(string channels, bool isPattern, int dmsec) {
+            return subNoBlock(channels, isPattern, dmsec /* msecs */, Clock.currTime());
+        }
+        
+        Response[] subNoBlock(string channels, bool isPattern, int dmsec, SysTime expiryTime) {
             string cmd;
 
             if (channelKeys == null) {
@@ -210,7 +214,7 @@ public :
                 channelKeys[channels] = expiryTime.toISOExtString(); // XXX TODO implement time expiry
             }
             writeln("here0");
-            Response[] r = receiveResponses(conn, 0, 1000);
+            Response[] r = receiveResponses(conn, 0, dmsec);
             writeln("here");
             writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length);
             return r;
