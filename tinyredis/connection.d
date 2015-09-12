@@ -5,12 +5,13 @@ module tinyredis.connection;
  */
 
 public:
-    import std.socket : TcpSocket;
+    import std.socket : TcpSocket, SocketOption, SocketOptionLevel;
 	    
 private:
     import std.array : appender, back, popBack;
     import tinyredis.parser;
     import tinyredis.response;
+    import core.time;
 
 debug {
 	import std.stdio : writeln;
@@ -48,6 +49,21 @@ public:
      */
     Response[] receiveResponses(TcpSocket conn, size_t minResponses = 0)
     {
+        return receiveResponses(conn, minResponses, -1);
+    }
+
+    /**
+     * Receive responses from redis server
+     *
+     * Params:
+     *   conn         = Connection to redis server.
+     *   minResponses = The number of multibulks you expect
+     *   d = The direction in milliseconds
+     *
+     * Throws: $(D ConnectionException) if there is a socket error or server closes the connection.
+     */
+    Response[] receiveResponses(TcpSocket conn, size_t minResponses = 0, int d = -1)
+    {
         byte[] buffer;
         Response[] responses;
         Response*[] MultiBulks; //Stack of pointers to multibulks
@@ -55,8 +71,8 @@ public:
         
         while(true)
         {
-            receive(conn, buffer);
-            
+            receive(conn, buffer, d);
+
             debug{ writeln("BUFFER : ", escape(cast(string)buffer)); } 
             
             while(buffer.length > 0)
@@ -121,16 +137,25 @@ public:
 
 private :
     
-    void receive(TcpSocket conn, ref byte[] buffer)
+    void receive(TcpSocket conn, ref byte[] buffer, int d)
     {
         byte[1024 * 16] buff;
+
+        if (d > -1) { 
+        conn.setOption(SocketOptionLevel.SOCKET,
+            SocketOption.RCVTIMEO, d.msecs); // dur!"seconds"(1)
+        }
         size_t len = conn.receive(buff);
+
         
         if(len == 0)
             throw new ConnectionException("Server closed the connection!");
-        else if(len == TcpSocket.ERROR)
+        else if(len == TcpSocket.ERROR && d > 0)
+            writeln("Timed out in ", d, "msecs");
+        else if(len == TcpSocket.ERROR && d == -1)
             throw new ConnectionException("A socket error occurred!");
-
-        buffer ~= buff[0 .. len];
-        debug { writeln("Response : ", "'" ~ escape(cast(string)buff) ~ "'", " Length : ", len); }
+        else {
+            buffer ~= buff[0 .. len];
+            debug { writeln("Response : ", "'" ~ escape(cast(string)buff) ~ "'", " Length : ", len); }
+        }
     }

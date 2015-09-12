@@ -194,7 +194,13 @@ public :
         Response[] subNoBlock(string channels, bool isPattern, SysTime expiryTime) {
             string cmd;
 
+            if (channelKeys == null) {
+                writeln("channelKeys is null");
+            } else {
+                writeln(channelKeys);
+            }
             if (channels !in channelKeys) {
+                writeln("channels not in channelKeys");
                 if (isPattern) {
                     cmd = "PSUBSCRIBE " ~ channels; // XXX TODO validate input
                 } else {
@@ -203,8 +209,9 @@ public :
                 conn.send(toMultiBulk(cmd));
                 channelKeys[channels] = expiryTime.toISOExtString(); // XXX TODO implement time expiry
             }
-
-            Response[] r = receiveResponses(conn, 1);
+            writeln("here0");
+            Response[] r = receiveResponses(conn, 0, 1000);
+            writeln("here");
             writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length);
             return r;
         }
@@ -569,6 +576,9 @@ unittest
     responses = redis.subNoBlock("foozzle", false);
     writeln(responses.length);
     assert(responses.length == 1);
+    responses = redis.subNoBlock("foozzle", false);
+    writeln(responses.length);
+    assert(responses.length == 0);
     redis2.send("PUBLISH foozzle again1");
     responses = redis.subNoBlock("foozzle", false);
     assert(responses.length == 1);
