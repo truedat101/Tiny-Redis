@@ -213,10 +213,8 @@ public :
                 conn.send(toMultiBulk(cmd));
                 channelKeys[channels] = expiryTime.toISOExtString(); // XXX TODO implement time expiry
             }
-            writeln("here0");
             Response[] r = receiveResponses(conn, 0, dmsec);
-            writeln("here");
-            writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length);
+            debug { writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length); }
             return r;
         }
 
