@@ -214,7 +214,7 @@ public :
                 channelKeys[channels] = expiryTime.toISOExtString(); // XXX TODO implement time expiry
             }
             Response[] r = receiveResponses(conn, 0, dmsec);
-            debug { writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length); }
+            debug(2) { writeln("subNoBlock responses [" ~ channels ~ "] length is ", r.length); }
             return r;
         }
 
