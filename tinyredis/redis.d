@@ -200,7 +200,8 @@ public :
 
             if (channelKeys == null) {
                 writeln("channelKeys is null");
-            } else {
+            } 
+            debug(2) { 
                 writeln(channelKeys);
             }
             if (channels !in channelKeys) {
@@ -258,7 +259,7 @@ public :
                     subscriberContext context = new subscriberContext();
                     context.totalremaining = cast(int) r.length-1;
                     context.channel = r[i].values[1].value; 
-                    cb(context, r[i]);
+                 cb(context, r[i]);
                 }
 
                 Thread.sleep(200.msecs);
