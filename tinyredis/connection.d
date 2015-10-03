@@ -151,7 +151,7 @@ private :
         if(len == 0)
             throw new ConnectionException("Server closed the connection!");
         else if(len == TcpSocket.ERROR && d > 0)
-            writeln("Timed out in ", d, "msecs");
+            debug(2) { writeln("Timed out in ", d, "msecs"); }
         else if(len == TcpSocket.ERROR && d == -1)
             throw new ConnectionException("A socket error occurred!");
         else {
