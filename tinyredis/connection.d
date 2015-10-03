@@ -73,7 +73,7 @@ public:
         {
             receive(conn, buffer, d);
 
-            debug{ writeln("BUFFER : ", escape(cast(string)buffer)); } 
+            debug(2){ writeln("BUFFER : ", escape(cast(string)buffer)); } 
             
             while(buffer.length > 0)
             {
@@ -112,7 +112,7 @@ public:
             
             if(buffer.length == 0 && MultiBulks.length == 0) //Make sure all the multi bulks got their data
             {
-                debug {
+                debug(2) {
                     if(minResponses > 1 && responses.length < minResponses)
                         writeln("WAITING FOR MORE RESPONSES ... ");
                 }
@@ -156,6 +156,6 @@ private :
             throw new ConnectionException("A socket error occurred!");
         else {
             buffer ~= buff[0 .. len];
-            debug { writeln("Response : ", "'" ~ escape(cast(string)buff) ~ "'", " Length : ", len); }
+            debug(2) { writeln("Response : ", "'" ~ escape(cast(string)buff) ~ "'", " Length : ", len); }
         }
     }
