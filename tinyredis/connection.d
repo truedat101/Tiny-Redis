@@ -150,9 +150,10 @@ private :
         
         if(len == 0)
             throw new ConnectionException("Server closed the connection!");
-        else if(len == TcpSocket.ERROR && d > 0)
+        else if(len == TcpSocket.ERROR && d > 0) {
+            // Unreported timeout
             debug(2) { writeln("Timed out in ", d, "msecs"); }
-        else if(len == TcpSocket.ERROR && d == -1)
+        } else if(len == TcpSocket.ERROR && d == -1)
             throw new ConnectionException("A socket error occurred!");
         else {
             buffer ~= buff[0 .. len];
